@@ -1,14 +1,14 @@
-import React from 'react';
-import App from './App';
+import React from "react";
+import App from "./App";
 import {
   ApolloClient,
   InMemoryCache,
   ApolloProvider,
   createHttpLink,
   ApolloLink,
-} from '@apollo/client';
-import { setContext } from 'apollo-link-context';
-import { onError } from 'apollo-link-error';
+} from "@apollo/client";
+import { setContext } from "apollo-link-context";
+import { onError } from "apollo-link-error";
 
 const errorLink = onError(
   ({ graphQLErrors, networkError, operation, forward }) => {
@@ -31,13 +31,14 @@ const errorLink = onError(
 
 const link = () => {
   const authorizationLink = setContext((request, previousContext) => {
-    const token = localStorage.getItem('jwtToken');
+    const token = localStorage.getItem("jwtToken");
     return {
       headers: { Authorization: token ? `Bearer ${token}` : `` },
     };
   });
   const httpLink = createHttpLink({
-    uri: 'http://localhost:5000',
+    // uri: process.env.REACT_APP_SERVER_URL,
+    uri: "http://localhost:5000",
   });
 
   const authenticatedLink = authorizationLink.concat(httpLink); // if we donot need errorLink, it can also be returned
