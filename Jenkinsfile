@@ -33,34 +33,34 @@ pipeline {
   stages {
 
     stage('Checkout Multiple SCMs') {
-      steps {
+    steps {
         script {
-          // backend
-          dir('backend') {
-            checkout([$class: 'GitSCM',
-              branches: [[name: "*/${params.GIT_BRANCH}"]],
-              doGenerateSubmoduleConfigurations: false,
-              extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '.']],
-              userRemoteConfigs: [[url: params.BACKEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
-            ])
-          }
-
-          // frontend (optional)
-          if (params.FRONTEND_GIT_URL?.trim()) {
-            dir('frontend') {
-              checkout([$class: 'GitSCM',
-                branches: [[name: "*/${params.GIT_BRANCH}"]],
-                doGenerateSubmoduleConfigurations: false,
-                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '.']],
-                userRemoteConfigs: [[url: params.FRONTEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
-              ])
+            // server (formerly backend)
+            dir('server') {
+                checkout([$class: 'GitSCM',
+                    branches: [[name: "*/${params.GIT_BRANCH}"]],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '.']],
+                    userRemoteConfigs: [[url: params.BACKEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
+                ])
             }
-          } else {
-            echo "No frontend repo provided; skipping frontend checkout."
-          }
+
+            // client (formerly frontend)
+            if (params.FRONTEND_GIT_URL?.trim()) {
+                dir('client') {
+                    checkout([$class: 'GitSCM',
+                        branches: [[name: "*/${params.GIT_BRANCH}"]],
+                        doGenerateSubmoduleConfigurations: false,
+                        extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '.']],
+                        userRemoteConfigs: [[url: params.FRONTEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
+                    ])
+                }
+            } else {
+                echo "No frontend repo provided; skipping frontend checkout."
+            }
         }
-      }
     }
+}
 
     stage('Validate Dockerfile (server)') {
       steps {
