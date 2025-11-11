@@ -62,17 +62,17 @@ pipeline {
       }
     }
 
-    stage('Validate Dockerfile (backend)') {
+    stage('Validate Dockerfile (server)') {
       steps {
-        dir('backend') {
+        dir('server') {
           sh '''
             set -eux
             if [ ! -f Dockerfile ]; then
-              echo "ERROR: backend/Dockerfile not found!"
+              echo "ERROR: server/Dockerfile not found!"
               exit 1
             fi
             if [ ! -s Dockerfile ]; then
-              echo "ERROR: backend/Dockerfile is empty!"
+              echo "ERROR: server/Dockerfile is empty!"
               exit 1
             fi
             echo "Dockerfile validation passed"
@@ -81,9 +81,9 @@ pipeline {
       }
     }
 
-    stage('Build & Test (backend)') {
+    stage('Build & Test (server)') {
       steps {
-        dir('backend') {
+        dir('server') {
           script {
             docker.image(env.NODE_IMAGE).inside {
               sh '''
