@@ -3,7 +3,7 @@ pipeline {
 
   options {
     timestamps()
-    ansiColor('xterm')
+  
     skipDefaultCheckout(true)
     durabilityHint('MAX_SURVIVABILITY')
     timeout(time: 60, unit: 'MINUTES')
