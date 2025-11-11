@@ -12,7 +12,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus:/etc/prometheus
+      - ./server/prometheus:/etc/prometheus
     restart: always
 
   grafana:
