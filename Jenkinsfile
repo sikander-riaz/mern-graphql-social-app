@@ -9,8 +9,7 @@ pipeline {
 
   parameters {
     choice(name: 'GIT_BRANCH', choices: ['stagging','master'], description: 'Branch to build')
-    string(name: 'BACKEND_GIT_URL', defaultValue: 'https://github.com/sikander-riaz/mern-graphql-social-app', description: 'Backend repo URL')
-    string(name: 'FRONTEND_GIT_URL', defaultValue: '', description: 'Frontend repo URL (optional)')
+    string(name: 'GIT_URL', defaultValue: 'https://github.com/sikander-riaz/mern-graphql-social-app', description: 'Monorepo URL')
     string(name: 'DOCKER_IMAGE', defaultValue: 'siku9786/mern-backend-app', description: 'Docker image name (repo/image)')
     string(name: 'REMOTE_HOST', defaultValue: 'ubuntu@1.2.3.4', description: 'Remote SSH target (user@host)')
     string(name: 'REMOTE_DEPLOY_CMD', defaultValue: "docker pull ${params.DOCKER_IMAGE}:latest && docker rm -f app || true && docker run -d --name app -p 80:80 ${params.DOCKER_IMAGE}:latest", description: 'Remote deploy command')
@@ -30,37 +29,39 @@ pipeline {
 
   stages {
 
-    stage('Checkout Multiple SCMs') {
+    stage('Checkout Backend') {
       steps {
         script {
-          // server repo
-          dir('server') {
+          // Checkout backend repo directly to workspace root
+          checkout([$class: 'GitSCM',
+            branches: [[name: "*/${params.GIT_BRANCH}"]],
+            doGenerateSubmoduleConfigurations: false,
+            extensions: [],
+            userRemoteConfigs: [[url: params.BACKEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
+          ])
+        }
+      }
+    }
+
+    stage('Checkout Frontend (Optional)') {
+      when {
+        expression { params.FRONTEND_GIT_URL?.trim() }
+      }
+      steps {
+        script {
+          dir('client') {
             checkout([$class: 'GitSCM',
               branches: [[name: "*/${params.GIT_BRANCH}"]],
               doGenerateSubmoduleConfigurations: false,
               extensions: [],
-              userRemoteConfigs: [[url: params.BACKEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
+              userRemoteConfigs: [[url: params.FRONTEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
             ])
-          }
-
-          // client repo (optional)
-          if (params.FRONTEND_GIT_URL?.trim()) {
-            dir('client') {
-              checkout([$class: 'GitSCM',
-                branches: [[name: "*/${params.GIT_BRANCH}"]],
-                doGenerateSubmoduleConfigurations: false,
-                extensions: [],
-                userRemoteConfigs: [[url: params.FRONTEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
-              ])
-            }
-          } else {
-            echo "No frontend repo provided; skipping frontend checkout."
           }
         }
       }
     }
 
-    stage('Validate Dockerfile (server)') {
+    stage('Validate Dockerfile') {
       steps {
         dir('server') {
           sh '''
@@ -79,7 +80,7 @@ pipeline {
       }
     }
 
-    stage('Build & Test (server)') {
+    stage('Build & Test') {
       steps {
         dir('server') {
           script {
