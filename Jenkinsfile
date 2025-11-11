@@ -1,9 +1,7 @@
 pipeline {
-//   agent  { label 'docker-node' }
- agent any
+  agent any
   options {
     timestamps()
-  
     skipDefaultCheckout(true)
     durabilityHint('MAX_SURVIVABILITY')
     timeout(time: 60, unit: 'MINUTES')
@@ -23,44 +21,44 @@ pipeline {
     NODE_IMAGE = 'node:18-slim'
     SONAR_IMAGE = 'sonarsource/sonar-scanner-cli:latest'
     IMAGE_TAG = "build-${env.BUILD_NUMBER}"
-    GIT_CREDENTIALS = 'git-credentials'          // matches your listed git credential
-    REGISTRY_CREDENTIALS = 'docker-hub-token'   // Docker Hub token
-    REMOTE_SSH_CREDENTIALS = 'remote-ssh'       // placeholder for SSH key credential
-    SONAR_TOKEN_CRED = 'gen-token'              // Sonar token secret text
-    SONAR_SERVER_NAME = 'sonarqube'             // Sonar server configured in Jenkins
+    GIT_CREDENTIALS = 'git-credentials'
+    REGISTRY_CREDENTIALS = 'docker-hub-token'
+    REMOTE_SSH_CREDENTIALS = 'remote-ssh'
+    SONAR_TOKEN_CRED = 'gen-token'
+    SONAR_SERVER_NAME = 'sonarqube'
   }
 
   stages {
 
     stage('Checkout Multiple SCMs') {
-    steps {
+      steps {
         script {
-            // server (formerly backend)
-            dir('server') {
-                checkout([$class: 'GitSCM',
-                    branches: [[name: "*/${params.GIT_BRANCH}"]],
-                    doGenerateSubmoduleConfigurations: false,
-                    extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '.']],
-                    userRemoteConfigs: [[url: params.BACKEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
-                ])
-            }
+          // server repo
+          dir('server') {
+            checkout([$class: 'GitSCM',
+              branches: [[name: "*/${params.GIT_BRANCH}"]],
+              doGenerateSubmoduleConfigurations: false,
+              extensions: [],
+              userRemoteConfigs: [[url: params.BACKEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
+            ])
+          }
 
-            // client (formerly frontend)
-            if (params.FRONTEND_GIT_URL?.trim()) {
-                dir('client') {
-                    checkout([$class: 'GitSCM',
-                        branches: [[name: "*/${params.GIT_BRANCH}"]],
-                        doGenerateSubmoduleConfigurations: false,
-                        extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '.']],
-                        userRemoteConfigs: [[url: params.FRONTEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
-                    ])
-                }
-            } else {
-                echo "No frontend repo provided; skipping frontend checkout."
+          // client repo (optional)
+          if (params.FRONTEND_GIT_URL?.trim()) {
+            dir('client') {
+              checkout([$class: 'GitSCM',
+                branches: [[name: "*/${params.GIT_BRANCH}"]],
+                doGenerateSubmoduleConfigurations: false,
+                extensions: [],
+                userRemoteConfigs: [[url: params.FRONTEND_GIT_URL, credentialsId: env.GIT_CREDENTIALS]]
+              ])
             }
+          } else {
+            echo "No frontend repo provided; skipping frontend checkout."
+          }
         }
+      }
     }
-}
 
     stage('Validate Dockerfile (server)') {
       steps {
@@ -111,7 +109,7 @@ pipeline {
                   set -eux
                   sonar-scanner \
                     -Dsonar.projectKey=${env.JOB_NAME}-${env.BUILD_NUMBER} \
-                    -Dsonar.sources=backend${params.FRONTEND_GIT_URL?.trim() ? ",frontend" : ""} \
+                    -Dsonar.sources=server${params.FRONTEND_GIT_URL?.trim() ? ",client" : ""} \
                     -Dsonar.host.url=${SONAR_HOST_URL} \
                     -Dsonar.login=${SONAR_TOKEN} \
                     -Dsonar.working.directory=.scannerwork
@@ -142,7 +140,7 @@ pipeline {
       steps {
         script {
           docker.withRegistry('', env.REGISTRY_CREDENTIALS) {
-            dir('backend') {
+            dir('server') {
               def img = docker.build("${params.DOCKER_IMAGE}:${env.IMAGE_TAG}", ".")
               img.push()
               sh "docker tag ${params.DOCKER_IMAGE}:${env.IMAGE_TAG} ${params.DOCKER_IMAGE}:latest || true"
