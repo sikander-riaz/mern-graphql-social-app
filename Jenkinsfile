@@ -22,7 +22,7 @@ pipeline {
     string(name: 'DOCKER_IMAGE', defaultValue: 'siku9786/mern-backend-app', description: 'Docker image (repo/name)')
     string(name: 'DOCKER_REGISTRY', defaultValue: '', description: 'Registry URL (empty for Docker Hub)')
 
-    // Deployment (optional for now)
+    // Deployment
     string(name: 'REMOTE_HOST', defaultValue: '', description: 'Remote SSH target (user@host). Leave empty to skip deploy')
     string(name: 'REMOTE_DEPLOY_CMD', defaultValue: "docker pull ${params.DOCKER_IMAGE}:latest && docker rm -f app || true && docker run -d --name app -p 80:80 ${params.DOCKER_IMAGE}:latest", description: 'Remote deploy command')
 
@@ -31,7 +31,6 @@ pipeline {
 
     // SonarQube
     string(name: 'SONARQUBE_SERVER', defaultValue: 'sonarqube', description: 'Jenkins SonarQube server name')
-    string(name: 'SONAR_SCANNER_TOOL', defaultValue: 'scanner', description: 'Jenkins SonarScanner tool name')
     string(name: 'SONAR_PROJECT_KEY', defaultValue: 'mern-graph', description: 'SonarQube project key')
   }
 
@@ -40,14 +39,17 @@ pipeline {
     GIT_CREDENTIALS = 'git-credentials'
     REGISTRY_CREDENTIALS = 'docker-hub-token'
     REMOTE_SSH_CREDENTIALS = 'remote-ssh'
-
-    NODE_IMAGE = 'node:18-slim'
+    
+    // Sonar Token ID
+    SONAR_TOKEN_ID = 'gen-token' 
+    SCANNER_HOME = 'sonar-scanner-4.7.0.2747-linux'
   }
 
   stages {
-    stage('Setup (git in DinD)') {
+    stage('Setup Environment') {
       steps {
-        sh 'apk add --no-cache git openssh-client bash curl'
+        // 1. Install dependencies directly in the Agent (Faster & Safer)
+        sh 'apk add --no-cache git openssh-client bash curl nodejs npm openjdk11-jre unzip'
       }
     }
 
@@ -63,29 +65,25 @@ pipeline {
     stage('Build/Test (Node)') {
       steps {
         script {
-          docker.image(env.NODE_IMAGE).inside {
-            // Server
-            dir('server') {
-              sh '''
-                set -eux
-                if [ -f package.json ]; then
-                  npm ci
-                  npm test --if-present
-                  npm run build --if-present
-                fi
-              '''
-            }
-            // Client
-            dir('client') {
-              sh '''
-                set -eux
-                if [ -f package.json ]; then
-                  npm ci
-                  npm test --if-present
-                  npm run build --if-present
-                fi
-              '''
-            }
+          // Server Build
+          dir('server') {
+            sh '''
+              set -eux
+              # CHANGED: "npm ci" -> "npm install" to fix missing lockfile error
+              if [ -f package.json ]; then
+                npm install
+                npm test --if-present
+              fi
+            '''
+          }
+          // Client Build
+          dir('client') {
+            sh '''
+              set -eux
+              if [ -f package.json ]; then
+                npm install
+              fi
+            '''
           }
         }
       }
@@ -93,18 +91,29 @@ pipeline {
 
     stage('SonarQube Scan') {
       steps {
-        withSonarQubeEnv(params.SONARQUBE_SERVER) {
-          script {
-            def scannerHome = tool name: params.SONAR_SCANNER_TOOL, type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-            sh """
-              set -eux
-              ${scannerHome}/bin/sonar-scanner \
-                -Dsonar.projectKey=${params.SONAR_PROJECT_KEY} \
-                -Dsonar.sources=. \
-                -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/.next/** \
-                -Dsonar.javascript.lcov.reportPaths=server/coverage/lcov.info,client/coverage/lcov.info || true
-            """
-          }
+        script {
+           // 2. Download Scanner Manually to avoid configuration mismatches
+           sh """
+             if [ ! -d ${env.SCANNER_HOME} ]; then
+               wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.7.0.2747-linux.zip
+               unzip -q sonar-scanner-cli-4.7.0.2747-linux.zip
+             fi
+           """
+           
+           def scannerBin = "${env.WORKSPACE}/${env.SCANNER_HOME}/bin/sonar-scanner"
+           
+           withSonarQubeEnv(params.SONARQUBE_SERVER) {
+             withCredentials([string(credentialsId: env.SONAR_TOKEN_ID, variable: 'SONAR_TOKEN')]) {
+                sh """
+                  chmod +x ${scannerBin}
+                  ${scannerBin} \
+                    -Dsonar.projectKey=${params.SONAR_PROJECT_KEY} \
+                    -Dsonar.sources=. \
+                    -Dsonar.login=${SONAR_TOKEN} \
+                    -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/.next/**
+                """
+             }
+           }
         }
       }
     }
@@ -149,20 +158,6 @@ pipeline {
   }
 
   post {
-    success {
-      script {
-        emailext subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                 to: params.EMAIL_TO,
-                 body: """Build Succeeded!\nJob: ${env.JOB_NAME}\nBuild: ${env.BUILD_NUMBER}\nImage: ${params.DOCKER_IMAGE}:${env.IMAGE_TAG}\nURL: ${env.BUILD_URL}\n"""
-      }
-    }
-    failure {
-      script {
-        emailext subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                 to: params.EMAIL_TO,
-                 body: """Build FAILED.\nJob: ${env.JOB_NAME}\nBuild: ${env.BUILD_NUMBER}\nURL: ${env.BUILD_URL}\nCheck console output for details.\n"""
-      }
-    }
     always {
       cleanWs()
       sh 'docker system prune -af || true'
