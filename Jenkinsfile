@@ -1,5 +1,28 @@
 pipeline {
-  agent any
+  // agent any
+  agent {
+        docker {
+            image 'docker:29.0.0-dind' // The Docker-in-Docker image
+            
+            // This 'privileged' flag is for THIS CONTAINER, not the host.
+            // This is what allows the nested Docker daemon to run.
+            args '-u root --privileged' 
+            
+            // This tells Jenkins to re-use the controller's workspace
+            // so the agent can access your checkout (Dockerfile, source code)
+            reuseNode true 
+        }
+    }
+    
+    stages {
+        stage('Verify Isolated Docker') {
+            steps {
+                // These commands talk to the *nested* daemon
+                sh 'docker --version'
+                sh 'docker info'  // You'll see this is a clean, nested daemon
+                sh 'docker ps'    // This will be empty (it can't see the host)
+            }
+        } }
   options {
     timestamps()
     skipDefaultCheckout(true)
