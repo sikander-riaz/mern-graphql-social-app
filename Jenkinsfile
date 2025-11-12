@@ -31,6 +31,7 @@ pipeline {
 
     // SonarQube
     string(name: 'SONARQUBE_SERVER', defaultValue: 'sonarqube', description: 'Jenkins SonarQube server name')
+    // We will use the tool name 'scanner' directly in the stage below
     string(name: 'SONAR_PROJECT_KEY', defaultValue: 'mern-graph', description: 'SonarQube project key')
   }
 
@@ -42,14 +43,13 @@ pipeline {
     
     // Sonar Token ID
     SONAR_TOKEN_ID = 'gen-token' 
-    SCANNER_HOME = 'sonar-scanner-4.7.0.2747-linux'
   }
 
   stages {
     stage('Setup Environment') {
       steps {
-        // Install dependencies directly in the Agent
-        sh 'apk add --no-cache git openssh-client bash curl nodejs npm openjdk11-jre unzip'
+        // Java (openjdk11-jre) is REQUIRED for the scanner tool to run
+        sh 'apk add --no-cache git openssh-client bash curl nodejs npm openjdk11-jre'
       }
     }
 
@@ -70,10 +70,9 @@ pipeline {
             sh '''
               set -eux
               if [ -f package.json ]; then
-                # 1. Use 'install' instead of 'ci' to generate lockfile if missing
+                # Using 'install' generates the missing lockfile
                 npm install
-                
-                # 2. Added '|| true' so the build continues even if tests fail/don't exist
+                # '|| true' ensures the pipeline continues if tests are missing
                 npm test --if-present || true
               fi
             '''
@@ -94,21 +93,13 @@ pipeline {
     stage('SonarQube Scan') {
       steps {
         script {
-           // Download Scanner Manually
-           sh """
-             if [ ! -d ${env.SCANNER_HOME} ]; then
-               wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.7.0.2747-linux.zip
-               unzip -q sonar-scanner-cli-4.7.0.2747-linux.zip
-             fi
-           """
-           
-           def scannerBin = "${env.WORKSPACE}/${env.SCANNER_HOME}/bin/sonar-scanner"
+           // This retrieves the path to the tool named "scanner" from Jenkins Global Tools
+           def scannerHome = tool name: 'scanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
            
            withSonarQubeEnv(params.SONARQUBE_SERVER) {
              withCredentials([string(credentialsId: env.SONAR_TOKEN_ID, variable: 'SONAR_TOKEN')]) {
                 sh """
-                  chmod +x ${scannerBin}
-                  ${scannerBin} \
+                  ${scannerHome}/bin/sonar-scanner \
                     -Dsonar.projectKey=${params.SONAR_PROJECT_KEY} \
                     -Dsonar.sources=. \
                     -Dsonar.login=${SONAR_TOKEN} \
