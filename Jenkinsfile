@@ -15,14 +15,7 @@ pipeline {
     }
     
     
-        stage('Verify Isolated Docker') {
-            steps {
-                // These commands talk to the *nested* daemon
-                sh 'docker --version'
-                sh 'docker info'  // You'll see this is a clean, nested daemon
-                sh 'docker ps'    // This will be empty (it can't see the host)
-            }
-        } 
+        
   options {
     timestamps()
     skipDefaultCheckout(true)
@@ -51,6 +44,8 @@ pipeline {
   }
 
   stages {
+
+
 
     stage('Checkout Backend') {
       steps {
